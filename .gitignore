@@ -1,0 +1,11 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# experiment artifacts
+swanlog/
+datasets/
+eval-results/
+*.jsonl
+.DS_Store
