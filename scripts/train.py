@@ -211,9 +211,12 @@ def train():
         eval_res = evaluate_model(
             agent, eval_data, max_new_tokens=cfg.max_new_tokens,
             overlong_cache=cfg.overlong_cache, enable_overlong=cfg.overlong_shaping,
-            format_weight=cfg.format_weight)
+            format_weight=cfg.format_weight, pass_k=cfg.pass_at_k,
+            pass_k_samples=cfg.pass_k_samples)
+        pass_str = (f" pass@{cfg.pass_at_k}={eval_res[f'pass@{cfg.pass_at_k}']:.4f}"
+                    if cfg.pass_at_k > 1 else "")
         print(f"[eval] accuracy={eval_res['accuracy']:.4f} "
-              f"format_rate={eval_res['format_rate']:.4f} "
+              f"format_rate={eval_res['format_rate']:.4f}{pass_str} "
               f"per_source={eval_res['per_source']}")
 
     diag.finish()

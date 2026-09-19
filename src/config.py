@@ -94,6 +94,8 @@ class Config:
     eval_samples: int = 100
 
     # ---- eval / logging / checkpoint --------------------------------------
+    pass_at_k: int = 0                          # 0 disables; e.g. 8 -> pass@8
+    pass_k_samples: int = 50                    # prompts used for the pass@k estimate
     eval_every: int = 10
     save_every: int = 50
     use_swanlab: bool = True
