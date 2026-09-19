@@ -1,8 +1,0 @@
-pytrio
-swanlab
-math-verify
-datasets
-tqdm
-numpy
-torch
-pytest
