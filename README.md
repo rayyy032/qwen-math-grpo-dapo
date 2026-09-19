@@ -129,6 +129,9 @@ python scripts/train.py --algorithm entropy_reg --dataset gsm8k \
 
 # 七组消融一键跑（BASE_MODEL / DATASET / MAX_STEPS 可用环境变量覆盖）
 bash scripts/run_ablations.sh
+
+# 没有 GPU？Kaggle 免费 T4 一键跑（上传 kaggle_train.ipynb → Run All）
+# 产出：七组 reward 训练曲线 + accuracy 对比图 + ablation_results.json
 ```
 
 训练曲线与诊断面板（reward / accuracy / surprisal / clip_fraction / 零方差组占比 / hack rates）默认落盘到 `outputs/` 与 `swanlog/`（SwanLab 本地模式，无需注册账号）。
