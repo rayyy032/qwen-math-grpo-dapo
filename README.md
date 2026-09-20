@@ -110,6 +110,29 @@ decoder-only 模型批量生成必须 **left padding**（右侧 padding 会导�
 
 七组除算法开关外**全部超参一致**（preset 表见 `src/config.py`），保证差异只来自算法本身。
 
+## 实测结果（GSM8K · Qwen2.5-0.5B-Instruct · 单张 T4 · 每组 100 步）
+
+七组在 Kaggle T4 上一次性跑完（总时长 4h41m，无一组失败），原始数据 `results/ablation_results.json`，曲线图 `results/ablation_summary.png`：
+
+| algorithm | accuracy | format_rate | final_reward | surprisal | 零方差组占比 | 平均补全长度 | 耗时 |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `grpo`（基线） | 32% | 76% | 0.63 | 0.224 | 0% | 189 | 39 min |
+| `+ clip_higher` | **40%** | 86% | 0.80 | 0.141 | 0% | 178 | 38 min |
+| `+ dynamic_sampling` | **41%** | 85% | **0.83** | 0.154 | 0% | 188 | 59 min |
+| `+ token_level` | 32% | 80% | 0.55 | 0.185 | 0% | 215 | 39 min |
+| `+ overlong_shaping` | **41%** | **100%** | 0.51 | 0.213 | 0% | **141** | 36 min |
+| `dapo`（四项全开） | 0% | 0% | 0.00 | 0.000 | **100%** | **0** | 25 min |
+| `entropy_reg`（DAPO+熵） | 35% | 99% | 0.45 | **0.240** | 0% | 90 | 36 min |
+
+**四条主要发现：**
+
+1. **clip_higher 是单项收益最大的改进**：accuracy 32% → 40%（+8pp），format_rate 76% → 86%——放宽优势侧裁剪让低概率正确样本获得更大更新。
+2. **overlong shaping 精准改变了行为而非分数**：format_rate 76% → **100%**，补全长度 189 → 141 tokens（-25%），accuracy 反而升至 41%——软惩罚消除了拖尾输出，没有牺牲正确性。
+3. **完整 DAPO 配方在 0.5B 小模型上熵坍缩**：四项全开时 reward 曲线在第 ~45 步后归零、补全长度降为 0、零方差组占比 = 100%（组内 8 条采样完全相同 → advantage 恒为 0 → 梯度消失，策略被永久冻结在空输出上）。诊断指标链（surprisal=0 + 零方差组=1.0 + 长度=0）完整定位了失效机制：overlong 惩罚把策略推向空输出，而 dynamic sampling 的重采样无法挽救已经零方差的组。
+4. **熵正则把坍缩救了回来**：在 DAPO 全开基础上只加一项 surprisal 奖励（系数 0.01），坍缩消失——accuracy 35%、format_rate 99%、surprisal 全场最高（0.240），补全长度压到 90 tokens。这是本消融最干净的 single-variable 对比：`dapo` vs `entropy_reg` 只差一个开关，一坍一稳。
+
+注：本批跑的是 100 步小规模消融（500 train / 100 eval），数字用于组间相对比较而非绝对 SOTA；pass@8 未在本批评测（后续可 `--pass-at-k 8` 补跑）。
+
 ## 快速开始
 
 ```bash
