@@ -45,6 +45,7 @@ def evaluate_model(agent, eval_data, max_new_tokens=256, overlong_cache=128,
             valid_format += int(r.valid_format)
             per_source[s.get("data_source", "unknown")][0] += int(r.correct)
             per_source[s.get("data_source", "unknown")][1] += 1
+        print(f"[progress] eval greedy {min(i + chunk, n)}/{n}", flush=True)
 
     result = {
         "accuracy": round(correct / max(n, 1), 4),
@@ -73,6 +74,8 @@ def evaluate_model(agent, eval_data, max_new_tokens=256, overlong_cache=128,
                                  truncated[j], format_weight)
                 if r.correct:
                     any_correct[(i + j) // pass_k] = True
+            print(f"[progress] eval pass@{pass_k} "
+                  f"{min(i + chunk, len(prompts))}/{len(prompts)}", flush=True)
         result[f"pass@{pass_k}"] = round(
             sum(any_correct) / max(len(subset), 1), 4)
 
