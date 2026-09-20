@@ -29,22 +29,22 @@ def evaluate_model(agent, eval_data, max_new_tokens=256, overlong_cache=128,
     valid_format = 0
     per_source = defaultdict(lambda: [0, 0])  # source -> [correct, total]
 
-    for sample in eval_data:
-        prompt = sample["prompt"]
-        gt = sample["ground_truth"]
-        source = sample.get("data_source", "unknown")
-        # near-greedy: temperature ~0 under do_sample=True
+    # near-greedy: temperature ~0 under do_sample=True, batched for throughput
+    chunk = 32
+    for i in range(0, n, chunk):
+        batch = eval_data[i:i + chunk]
         responses, _full_ids, _spans, comp_lens, truncated = \
             agent.generate_responses(
-                [prompt], max_new_tokens=max_new_tokens, temperature=0.01,
-                max_prompt_tokens=512)
-        r = score_answer(responses[0], gt, comp_lens[0], max_new_tokens,
-                         overlong_cache, enable_overlong, truncated[0],
-                         format_weight)
-        correct += int(r.correct)
-        valid_format += int(r.valid_format)
-        per_source[source][0] += int(r.correct)
-        per_source[source][1] += 1
+                [s["prompt"] for s in batch], max_new_tokens=max_new_tokens,
+                temperature=0.01, max_prompt_tokens=512)
+        for s, resp, cl, tr in zip(batch, responses, comp_lens, truncated):
+            r = score_answer(resp, s["ground_truth"], cl, max_new_tokens,
+                             overlong_cache, enable_overlong, tr,
+                             format_weight)
+            correct += int(r.correct)
+            valid_format += int(r.valid_format)
+            per_source[s.get("data_source", "unknown")][0] += int(r.correct)
+            per_source[s.get("data_source", "unknown")][1] += 1
 
     result = {
         "accuracy": round(correct / max(n, 1), 4),
