@@ -106,15 +106,23 @@ class Config:
     resume_from: Optional[str] = None
 
 
-def apply_preset(cfg: Config) -> Config:
+def apply_preset(cfg: Config, cli_set=frozenset()) -> Config:
     """Resolve the ``--algorithm`` name into DAPO toggles + adaptive clip range."""
     preset = PRESETS.get(cfg.algorithm, PRESETS["grpo"])
     for key, value in preset.items():
-        setattr(cfg, key, value)
+        if key not in cli_set:
+            setattr(cfg, key, value)
 
     # Clip-Higher only changes eps_high; vanilla keeps a symmetric clip.
-    cfg.eps_low = cfg.epsilon
-    cfg.eps_high = 0.28 if cfg.clip_higher else cfg.epsilon
+    # eps_high/eps_low are derived, so they may only be recomputed when the
+    # user did not pass them explicitly on the CLI.
+    if "epsilon" not in cli_set:
+        if "eps_low" not in cli_set:
+            cfg.eps_low = cfg.epsilon
+        if "eps_high" not in cli_set:
+            cfg.eps_high = 0.28 if cfg.clip_higher else cfg.epsilon
+    elif "eps_low" not in cli_set:
+        cfg.eps_low = cfg.epsilon
     # keep the soft-penalty window valid for small generation budgets (smoke)
     if cfg.overlong_cache >= cfg.max_new_tokens:
         cfg.overlong_cache = max(1, cfg.max_new_tokens // 4)
@@ -126,76 +134,43 @@ def apply_preset(cfg: Config) -> Config:
 # ---------------------------------------------------------------------------
 # argparse
 # ---------------------------------------------------------------------------
-def _type_of(field_obj, raw_value: str):
-    """Coerce a CLI string into the declared dataclass field type."""
-    t = field_obj.type
-    if t is bool or t == "bool":
-        return raw_value.lower() in ("true", "1", "yes")
-    if t is int or t == "int":
-        return int(raw_value)
-    if t is float or t == "float":
-        return float(raw_value)
-    if t is Optional[int]:
-        try:
-            return int(raw_value)
-        except (TypeError, ValueError):
-            return None
-    return raw_value
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="GRPO / DAPO from-scratch reproduction + ablation grid.")
     parser.add_argument("--algorithm", type=str, default="grpo",
                         choices=list(PRESETS.keys()))
-    parser.add_argument("--base-model", type=str, default=None)
-    parser.add_argument("--device", type=str, default=None)
-    parser.add_argument("--max-steps", type=int, default=None)
-    parser.add_argument("--group-size", type=int, default=None)
-    parser.add_argument("--groups-per-step", type=int, default=None)
-    parser.add_argument("--max-new-tokens", type=int, default=None)
-    parser.add_argument("--max-prompt-tokens", type=int, default=None)
-    parser.add_argument("--dataset", type=str, default=None)
-    parser.add_argument("--train-samples", type=int, default=None)
-    parser.add_argument("--use-swanlab", type=lambda s: s.lower() in ("true", "1", "yes"),
-                        default=None)
-    parser.add_argument("--run-name", type=str, default=None)
-    parser.add_argument("--output-dir", type=str, default=None)
-    # Generic --key value overrides for any remaining Config field.
-    parser.add_argument("overrides", nargs=argparse.REMAINDER)
+    # Every remaining Config field gets an explicit CLI flag; unknown flags
+    # now hard-error instead of being silently swallowed.
+    for f in fields(Config):
+        if f.name == "algorithm":
+            continue
+        flag = "--" + f.name.replace("_", "-")
+        if f.type is bool or f.type == "bool":
+            parser.add_argument(flag, type=lambda s: s.lower() in ("true", "1", "yes"),
+                                default=None)
+        elif f.type in (int, "int"):
+            parser.add_argument(flag, type=int, default=None)
+        elif f.type in (float, "float"):
+            parser.add_argument(flag, type=float, default=None)
+        elif f.type is tuple:
+            # comma-separated list, e.g. --lora-target-modules q_proj,v_proj
+            parser.add_argument(flag, type=lambda s: tuple(s.split(",")), default=None)
+        else:
+            parser.add_argument(flag, type=str, default=None)
     return parser
 
 
 def load_config(argv=None) -> Config:
     parser = build_parser()
-    args, extras = parser.parse_known_args(argv)
+    args = parser.parse_args(argv)  # unknown flags now raise SystemExit(2)
     cfg = Config()
+    cli_set = {f.name for f in fields(Config)
+               if getattr(args, f.name, None) is not None}
+    for name in cli_set:
+        setattr(cfg, name, getattr(args, name))
+    cfg.algorithm = args.algorithm
 
-    # explicit flags first
-    for name in ("base_model", "device", "max_steps", "group_size", "groups_per_step",
-                 "max_new_tokens", "max_prompt_tokens", "dataset", "train_samples",
-                 "use_swanlab", "run_name", "output_dir"):
-        val = getattr(args, name)
-        if val is not None:
-            setattr(cfg, name, val)
-    if args.algorithm:
-        cfg.algorithm = args.algorithm
-
-    # generic --key value overrides
-    known = {f.name for f in fields(Config)}
-    i = 0
-    while i < len(extras):
-        arg = extras[i]
-        if arg.startswith("--") and i + 1 < len(extras):
-            key = arg[2:].replace("-", "_")
-            if key in known:
-                fld = fields(Config)
-                for f in fld:
-                    if f.name == key:
-                        setattr(cfg, key, _type_of(f, extras[i + 1]))
-                        break
-                i += 2
-                continue
-        i += 1
-
-    return apply_preset(cfg)
+    # Presets may only fill algorithm toggles that the CLI did not set
+    # explicitly, so ``--clip-higher true`` survives a preset that wants it
+    # off, and explicit flags always win over preset defaults.
+    return apply_preset(cfg, cli_set)

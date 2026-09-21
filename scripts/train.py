@@ -101,6 +101,12 @@ def train():
           f"overlong={cfg.overlong_shaping} entropy_reg={cfg.entropy_reg}")
     print(f"eps=[{cfg.eps_low}, {cfg.eps_high}] beta={cfg.beta} "
           f"ent_coef={cfg.entropy_coef} group_size={cfg.group_size}")
+    print(f"steps={cfg.max_steps} ppo_epochs={cfg.ppo_epochs} "
+          f"lr={cfg.learning_rate} pass_at_k={cfg.pass_at_k}")
+    print("--- FULL CONFIG (verify every value before leaving it running) ---")
+    for k, v in vars(cfg).items():
+        if not k.startswith("_"):
+            print(f"  {k} = {v}")
     print("=" * 70)
 
     agent = GRPOAgent(cfg.base_model, device=str(device),
@@ -205,7 +211,17 @@ def train():
             f" | {time.time() - step_start:.1f}s")
         global_step += 1
 
-    # ---- final evaluation -------------------------------------------------
+    # ---- final evaluation + checkpoint -----------------------------------
+    ckpt_dir = os.path.join(cfg.output_dir, f"ckpt_{cfg.run_name}")
+    os.makedirs(ckpt_dir, exist_ok=True)
+    adapter_path = os.path.join(ckpt_dir, "adapter")
+    try:
+        agent.policy_model.save_pretrained(adapter_path)
+        agent.tokenizer.save_pretrained(adapter_path)
+        print(f"[ckpt] LoRA adapter saved -> {adapter_path}", flush=True)
+    except Exception as e:  # checkpointing must never kill the run
+        print(f"[ckpt] save failed (non-fatal): {e}", flush=True)
+
     if eval_data:
         agent.policy_model.eval()
         eval_res = evaluate_model(
@@ -218,6 +234,9 @@ def train():
         print(f"[eval] accuracy={eval_res['accuracy']:.4f} "
               f"format_rate={eval_res['format_rate']:.4f}{pass_str} "
               f"per_source={eval_res['per_source']}")
+        with open(os.path.join(ckpt_dir, "eval_result.json"), "w") as f:
+            import json
+            json.dump(eval_res, f, indent=2)
 
     diag.finish()
     print("\nTraining complete.")
