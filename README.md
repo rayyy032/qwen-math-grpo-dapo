@@ -116,6 +116,7 @@ decoder-only 模型批量生成必须 **left padding**（右侧 padding 会导�
 
 | algorithm | accuracy | format_rate | final_reward | surprisal | 零方差组占比 | 平均补全长度 | 耗时 |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `base`（0-shot 未训练） | 21% | 34% | — | — | — | — | ~5 min（pass@8=48%） |
 | `grpo`（基线） | 32% | 76% | 0.63 | 0.224 | 0% | 189 | 39 min |
 | `+ clip_higher` | **40%** | 86% | 0.80 | 0.141 | 0% | 178 | 38 min |
 | `+ dynamic_sampling` | **41%** | 85% | **0.83** | 0.154 | 0% | 188 | 59 min |
@@ -124,7 +125,9 @@ decoder-only 模型批量生成必须 **left padding**（右侧 padding 会导�
 | `dapo`（四项全开） | 0% | 0% | 0.00 | 0.000 | **100%** | **0** | 25 min |
 | `entropy_reg`（DAPO+熵） | 35% | 99% | 0.45 | **0.240** | 0% | 90 | 36 min |
 
-**四条主要发现：**
+**五条主要发现：**
+
+0. **RL 训练本身带来大幅提升**（对照行）：未训练的 base 模型 0-shot accuracy 仅 21%、format_rate 34%、pass@8 48%；vanilla GRPO 训练 100 步后 accuracy 32%（+11pp）、format 76%（+42pp），最优单项配置达 41%（**+20pp**）。基线数据 `results/base_baseline.json`（同评测管线同 seed，严格可比）。
 
 1. **clip_higher 是单项收益最大的改进**：accuracy 32% → 40%（+8pp），format_rate 76% → 86%——放宽优势侧裁剪让低概率正确样本获得更大更新。
 2. **overlong shaping 精准改变了行为而非分数**：format_rate 76% → **100%**，补全长度 189 → 141 tokens（-25%），accuracy 反而升至 41%——软惩罚消除了拖尾输出，没有牺牲正确性。
