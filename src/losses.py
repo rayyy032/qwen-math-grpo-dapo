@@ -122,9 +122,12 @@ def grpo_loss(
     kl_penalty = beta * kl_cat.mean()
 
     # Entropy proxy = mean sampled-token surprisal ``mean(-log p)`` over every
-    # completion token (identical reduction regardless of token_level mode).
-    entropy = compute_surprisal(new_log_probs)
-    entropy_term = torch.tensor(-ent_coef * entropy, device=policy_loss.device) \
+    # completion token. Built from the in-graph tensor so the gradient flows
+    # (the old version used compute_surprisal's detached float -> no-op).
+    logp_cat = torch.cat([t for t in new_log_probs if t.numel() > 0])
+    surprisal_t = -logp_cat.mean()
+    entropy = float(surprisal_t.detach().item())
+    entropy_term = -ent_coef * surprisal_t \
         if ent_coef > 0.0 else torch.tensor(0.0, device=policy_loss.device)
 
     loss = policy_loss + kl_penalty + entropy_term
