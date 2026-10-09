@@ -174,10 +174,15 @@ def train():
             for _ in range(cfg.ppo_epochs):
                 new_lp = agent.get_policy_log_probs(
                     group["full_ids"], group["response_spans"], use_amp=use_amp)
+                # NOTE: ent_coef must be gated on cfg.entropy_reg, otherwise the
+                # entropy bonus leaks into ALL seven arms and the `entropy_reg`
+                # toggle stops being a single variable (the whole ablation grid
+                # would then be "everyone has entropy reg").
+                _ent_coef = cfg.entropy_coef if cfg.entropy_reg else 0.0
                 loss, p_loss, kl_pen, clip_frac, entropy = grpo_loss(
                     old_lp, new_lp, ref_lp, group["advantages"],
                     eps_low=cfg.eps_low, eps_high=cfg.eps_high, beta=cfg.beta,
-                    token_level=cfg.token_level, ent_coef=cfg.entropy_coef)
+                    token_level=cfg.token_level, ent_coef=_ent_coef)
                 amp_backward_step(loss, optimizer, None, agent.policy_model,
                                   cfg.max_grad_norm)
 
